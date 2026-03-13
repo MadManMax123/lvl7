@@ -6,9 +6,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const feedback = document.getElementById("integral-feedback");
   const audioBlock = document.getElementById("audio-block");
   const staticAudio = document.getElementById("static-audio");
+  const downloadLink = document.getElementById("download-link");
+  const flagInline = document.querySelector(".flag-inline");
 
   let loreSentences = [];
-  let expectedAnswer = "";
+  let loreIndex = 0;
+  let isTyping = false;
 
   try {
     const res = await fetch("/data.json");
@@ -17,7 +20,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const data = await res.json();
 
     loreSentences = Array.isArray(data.loreSentences) ? data.loreSentences : [];
-    expectedAnswer = String(data.expectedAnswer ?? "").trim();
 
     if (data.audioSrc && staticAudio) {
       const source = staticAudio.querySelector("source");
@@ -28,31 +30,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
 
-    if (data.downloadLink) {
-      const downloadLink = document.getElementById("download-link");
-      if (downloadLink) {
-        downloadLink.href = data.downloadLink;
-        downloadLink.textContent = data.downloadText || data.downloadLink;
-      }
-    }
-
-    if (data.flagText) {
-      const flagInline = document.querySelector(".flag-inline");
-      if (flagInline) {
-        flagInline.textContent = data.flagText;
-      }
+    if (downloadLink && data.downloadLink) {
+      downloadLink.href = data.downloadLink;
+      downloadLink.textContent = data.downloadText || data.downloadLink;
     }
   } catch (err) {
     console.error(err);
-    if (feedback) {
-      feedback.textContent = "failed to load node data.";
-      feedback.className = "integral-feedback error";
-    }
+    feedback.textContent = "failed to load node data.";
+    feedback.className = "integral-feedback error";
     return;
   }
-
-  let loreIndex = 0;
-  let isTyping = false;
 
   function typeSentence(sentence, callback) {
     const line = document.createElement("div");
@@ -91,7 +78,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  function checkAnswer() {
+  async function checkAnswer() {
     const value = (answerInput.value || "").trim();
 
     if (!value) {
@@ -112,29 +99,56 @@ document.addEventListener("DOMContentLoaded", async () => {
     feedback.textContent = "validating relay stability...";
     feedback.className = "integral-feedback";
 
-    setTimeout(() => {
-      if (value === expectedAnswer) {
-        feedback.textContent = "stability confirmed. trace unlocked.";
-        feedback.className = "integral-feedback ok";
+    try {
+      const res = await fetch("/api/check", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ answer: value })
+      });
 
-        audioBlock.classList.remove("hidden");
-        requestAnimationFrame(() => {
-          audioBlock.classList.add("visible");
-        });
-
-        setTimeout(() => {
-          staticAudio.play().catch(() => {});
-        }, 350);
-      } else {
-        feedback.textContent = "incorrect. this node rejects unstable values.";
-        feedback.className = "integral-feedback error";
-
-        answerInput.disabled = false;
-        answerSubmit.disabled = false;
-        answerInput.focus();
-        answerInput.select();
+      if (!res.ok) {
+        throw new Error("Server validation failed");
       }
-    }, 750);
+
+      const data = await res.json();
+
+      setTimeout(() => {
+        if (data.correct) {
+          feedback.textContent = "stability confirmed. trace unlocked.";
+          feedback.className = "integral-feedback ok";
+
+          if (flagInline && data.flag) {
+            flagInline.textContent = data.flag;
+          }
+
+          audioBlock.classList.remove("hidden");
+          requestAnimationFrame(() => {
+            audioBlock.classList.add("visible");
+          });
+
+          setTimeout(() => {
+            staticAudio.play().catch(() => {});
+          }, 350);
+        } else {
+          feedback.textContent = "incorrect. this node rejects unstable values.";
+          feedback.className = "integral-feedback error";
+
+          answerInput.disabled = false;
+          answerSubmit.disabled = false;
+          answerInput.focus();
+          answerInput.select();
+        }
+      }, 750);
+    } catch (err) {
+      console.error(err);
+      feedback.textContent = "relay validation failed. try again.";
+      feedback.className = "integral-feedback error";
+
+      answerInput.disabled = false;
+      answerSubmit.disabled = false;
+    }
   }
 
   showNextSentence();
