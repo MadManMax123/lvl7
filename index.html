@@ -24,56 +24,93 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
-      padding: 32px;
+      padding: 40px;
     }
 
     #cinematic-intro.fade-out {
-      animation: introFadeOut 1.1s ease forwards;
+      animation: introFadeOut 1.2s ease forwards;
+      pointer-events: none;
     }
 
     @keyframes introFadeOut {
-      to { opacity: 0; pointer-events: none; }
+      to { opacity: 0; }
     }
 
     #lore-display {
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: clamp(.78rem, 1.6vw, 1rem);
-      color: rgba(180, 210, 255, 0.85);
+      font-size: clamp(.78rem, 1.5vw, .95rem);
+      color: rgba(180, 210, 255, 0.82);
       text-align: center;
-      max-width: 62ch;
-      line-height: 1.75;
-      letter-spacing: .04em;
-      min-height: 2em;
+      max-width: 64ch;
+      line-height: 1.8;
+      letter-spacing: .045em;
+      min-height: 1.8em;
 
-      opacity: 0;
-      transition: opacity .38s ease;
-    }
-
-    #lore-display.show {
       opacity: 1;
+      transition: opacity .42s ease;
     }
 
-    #lore-display.hide {
+    #lore-display.fade-line-out {
       opacity: 0;
+      transition: opacity .42s ease;
     }
 
+    /* blinking cursor */
+    #lore-display::after {
+      content: '';
+      display: inline-block;
+      width: .5em;
+      height: 1em;
+      background: rgba(95, 240, 255, .75);
+      margin-left: 3px;
+      vertical-align: text-bottom;
+      animation: blink .65s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    /* scanline texture on intro */
+    #cinematic-intro::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,.18) 2px,
+        rgba(0,0,0,.18) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #lore-display {
+      position: relative;
+      z-index: 2;
+    }
+
+    /* skip button */
     #skip-btn {
       position: absolute;
       bottom: 28px;
       right: 32px;
+      z-index: 3;
 
       background: transparent;
-      border: 1px solid rgba(120, 160, 255, .22);
+      border: 1px solid rgba(120, 160, 255, .2);
       border-radius: 8px;
 
-      color: rgba(120, 160, 255, .5);
+      color: rgba(120, 160, 255, .45);
       font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: .68rem;
-      letter-spacing: .14em;
+      font-size: .66rem;
+      letter-spacing: .16em;
       text-transform: uppercase;
 
-      padding: 7px 13px;
+      padding: 7px 14px;
       cursor: pointer;
       transition: .2s;
     }
@@ -81,22 +118,17 @@
     #skip-btn:hover {
       border-color: rgba(95, 240, 255, .5);
       color: rgba(95, 240, 255, .8);
+      box-shadow: 0 0 10px rgba(95, 240, 255, .12);
     }
 
-    /* cursor blink on last line */
-    #lore-cursor {
-      display: inline-block;
-      width: .55em;
-      height: 1em;
-      background: rgba(95, 240, 255, .7);
-      margin-left: 3px;
-      vertical-align: text-bottom;
-      animation: blink .75s step-end infinite;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0; }
+    /* subtle vignette on intro bg */
+    #cinematic-intro::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.65) 100%);
+      pointer-events: none;
+      z-index: 1;
     }
   </style>
 </head>
@@ -105,11 +137,11 @@
   <!-- CINEMATIC INTRO -->
   <div id="cinematic-intro">
     <div id="lore-display"></div>
-    <button id="skip-btn">skip</button>
+    <button id="skip-btn">skip ›</button>
   </div>
 
-  <!-- MAIN SITE (hidden until intro ends) -->
-  <main class="l7-wrapper" id="main-site" style="visibility:hidden; opacity:0; transition: opacity .9s ease;">
+  <!-- MAIN SITE -->
+  <main class="l7-wrapper" id="main-site" style="visibility:hidden;opacity:0;transition:opacity .9s ease;">
     <div class="l7-header">
       <div class="l7-tag">Audio Translator // node 07</div>
       <h1>AUDIO NODAL INTERFACE</h1>
@@ -174,67 +206,95 @@
       const skipBtn   = document.getElementById('skip-btn');
       const mainSite  = document.getElementById('main-site');
 
-      // Timing config (ms)
-      const HOLD_MS    = 1800;   // how long each line stays visible
-      const FADE_MS    = 380;    // CSS transition duration
-      const PAUSE_MS   = 120;    // gap between fade-out and next line fade-in
+      // ── config ──────────────────────────────
+      const CHAR_DELAY   = 38;   // ms per character typed
+      const HOLD_MS      = 1100; // pause after line fully typed
+      const FADE_MS      = 420;  // CSS fade-out duration (must match CSS)
+      const INTER_MS     = 80;   // gap between fade-out and next line
+      // ────────────────────────────────────────
+
+      let skipTriggered = false;
 
       function revealSite() {
+        skipTriggered = true;
         introEl.classList.add('fade-out');
         setTimeout(() => {
           introEl.style.display = 'none';
           mainSite.style.visibility = 'visible';
-          mainSite.style.opacity = '1';
-        }, 1100);
+          mainSite.style.opacity    = '1';
+        }, 1200);
       }
 
       skipBtn.addEventListener('click', revealSite);
 
-      // Fetch lore lines from data.json
+      // ── fetch lore ───────────────────────────
       let lines = [];
       try {
         const res  = await fetch('/data.json');
         const data = await res.json();
-        // Support { lore: [...] } or { lines: [...] } or a top-level array
         lines = Array.isArray(data)
           ? data
           : (data.lore || data.lines || Object.values(data)[0] || []);
-        lines = lines.map(l => (typeof l === 'string' ? l : JSON.stringify(l)));
-      } catch (e) {
-        // If fetch fails just skip intro
+        lines = lines.map(l => typeof l === 'string' ? l : JSON.stringify(l));
+      } catch {
         revealSite();
         return;
       }
 
       if (!lines.length) { revealSite(); return; }
 
-      // Show lines one by one
-      const cursor = '<span id="lore-cursor"></span>';
+      // ── type a single line character by character ──
+      function typeLine(text) {
+        return new Promise(resolve => {
+          let i = 0;
+          displayEl.textContent = '';
 
-      for (let i = 0; i < lines.length; i++) {
-        const isLast = i === lines.length - 1;
+          function tick() {
+            if (skipTriggered) { resolve(); return; }
+            if (i <= text.length) {
+              displayEl.textContent = text.slice(0, i);
+              i++;
+              setTimeout(tick, CHAR_DELAY);
+            } else {
+              resolve();
+            }
+          }
 
-        // fade in
-        displayEl.innerHTML = lines[i] + (isLast ? cursor : '');
-        displayEl.classList.remove('hide');
-        displayEl.classList.add('show');
-
-        // hold
-        await new Promise(r => setTimeout(r, isLast ? HOLD_MS * 1.4 : HOLD_MS));
-
-        if (isLast) break;
-
-        // fade out
-        displayEl.classList.remove('show');
-        displayEl.classList.add('hide');
-
-        await new Promise(r => setTimeout(r, FADE_MS + PAUSE_MS));
-        displayEl.classList.remove('hide');
+          tick();
+        });
       }
 
-      // Brief extra pause on last line then reveal
-      await new Promise(r => setTimeout(r, 900));
-      revealSite();
+      // ── wait helper ──────────────────────────
+      function wait(ms) {
+        return new Promise(r => setTimeout(r, ms));
+      }
+
+      // ── run sequence ─────────────────────────
+      for (let idx = 0; idx < lines.length; idx++) {
+        if (skipTriggered) break;
+
+        // type in
+        await typeLine(lines[idx]);
+        if (skipTriggered) break;
+
+        // hold
+        await wait(HOLD_MS);
+        if (skipTriggered) break;
+
+        // fade out (skip on last line — let introFadeOut handle it)
+        if (idx < lines.length - 1) {
+          displayEl.classList.add('fade-line-out');
+          await wait(FADE_MS);
+          displayEl.classList.remove('fade-line-out');
+          displayEl.textContent = '';
+          await wait(INTER_MS);
+        }
+      }
+
+      if (!skipTriggered) {
+        await wait(600);
+        revealSite();
+      }
     })();
   </script>
 
