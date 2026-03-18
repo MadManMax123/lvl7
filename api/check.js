@@ -5,10 +5,14 @@ export default function handler(req, res) {
 
   const { answer } = req.body;
 
-  const correctAnswer = process.env.NODE7_ANSWER;
+  const correctAnswer = parseFloat(process.env.NODE7_ANSWER); // 0.2567
   const flag = process.env.NODE7_FLAG;
 
-  if (answer === correctAnswer) {
+  const userAnswer = parseFloat(answer);
+
+  const tolerance = 4;
+
+  if (Math.abs(userAnswer - correctAnswer) <= tolerance) {
     return res.status(200).json({
       correct: true,
       flag: flag
